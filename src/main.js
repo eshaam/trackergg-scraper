@@ -8,6 +8,7 @@ const CONFIG = {
     navigationTimeout: 90000, // 90 seconds
     typingDelay: 150, // ms between keystrokes for autocomplete
     games: {
+        // You can easily add more games here by following the pattern
         "fortnite": {
             baseUrl: "https://fortnitetracker.com",
             platformMap: { 'psn': 'psn', 'xbox': 'xbl', 'pc': 'pc' }
@@ -32,21 +33,20 @@ function constructDirectUrl(game, username, platform) {
     const gameConfig = CONFIG.games[game];
     if (!gameConfig || !username || !platform) return null;
 
+    // Use default platform slug or look it up in the config map
     const pSlug = gameConfig.platformMap[platform.toLowerCase()] || platform;
     const encodedUser = encodeURIComponent(username);
 
-    // 
-
     // Pattern matching for different sub-domains
-    if (game === 'warzone' || game === 'apex') {
+    if (game === 'warzone' || game === 'apex' || game === 'fortnite' || game === 'marvel-rivals') {
         return `${gameConfig.baseUrl}/profile/${pSlug}/${encodedUser}/overview`;
     }
-    // Add other game patterns here as needed
+
     return null;
 }
 
 /**
- * interacting with the AI model to parse raw HTML/Text into JSON.
+ * Interacts with the AI model to parse raw HTML/Text into JSON.
  */
 async function extractStatsWithAI(openaiClient, game, rawText) {
     if (!openaiClient) {
@@ -64,7 +64,6 @@ async function extractStatsWithAI(openaiClient, game, rawText) {
     Rules:
     1. If a stat is explicitly missing, use null.
     2. Do not calculate or hallucinate data.
-    3. Ignore navigation text (e.g., "Home", "Leaderboards").
     `;
 
     try {
@@ -85,7 +84,6 @@ async function extractStatsWithAI(openaiClient, game, rawText) {
 
 /**
  * Handles the UI interaction when direct navigation fails.
- * Types slowly to trigger autocomplete and handles dropdown clicks.
  */
 async function performSearch(page, targetUser) {
     log.info(`Performing manual search interaction for: ${targetUser}`);
@@ -112,12 +110,21 @@ async function performSearch(page, targetUser) {
     // 3. Selection Strategy
     const autocompleteOption = page.locator('div[class*="option"], .search-result, .force-search');
 
+    // Most reliable method for Tracker.gg: click the first autocomplete result
     if (await autocompleteOption.count() > 0) {
         log.info(`Clicking autocomplete suggestion...`);
         await autocompleteOption.first().click();
     } else {
+        // Fallback: Press Enter and then click search icon if URL hasn't changed
         log.info(`No autocomplete found. Pressing Enter...`);
         await searchInput.press('Enter');
+
+        await page.waitForTimeout(1000);
+        const searchIcon = page.locator('.fa-search, button[type="submit"], svg.search-icon');
+        if (await searchIcon.count() > 0 && page.url().includes('search?')) {
+            log.info(`Clicking search icon directly after failed Enter...`);
+            await searchIcon.first().click();
+        }
     }
 }
 
@@ -135,20 +142,33 @@ if (!process.env.OPENAI_API_KEY) {
 }
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-// Proxy Setup (Falls back to auto if residential isn't available)
-const proxyConfiguration = await Actor.createProxyConfiguration({
-    groups: ['RESIDENTIAL', 'AUTO'],
-    countryCode: 'US'
-});
+
+// 🛑 PROXY FIX: You cannot combine RESIDENTIAL with other proxy groups. 
+// We try for RESIDENTIAL first, and fall back to AUTO if necessary/configured externally.
+let proxyConfiguration;
+try {
+    // Attempt to use the dedicated Residential proxy group (recommended for stability)
+    proxyConfiguration = await Actor.createProxyConfiguration({
+        groups: ['RESIDENTIAL'],
+        countryCode: 'US'
+    });
+} catch (e) {
+    // Fallback to the general AUTO proxy group
+    log.warning(`Residential proxy unavailable or misconfigured: ${e.message}. Falling back to AUTO.`);
+    proxyConfiguration = await Actor.createProxyConfiguration({
+        groups: ['AUTO'],
+        countryCode: 'US'
+    });
+}
+
 
 const crawler = new PlaywrightCrawler({
     proxyConfiguration,
     useSessionPool: true,
     maxConcurrency: 1,
     requestHandlerTimeoutSecs: 180,
-    headless: true, // Set to false for local debugging
+    headless: true,
 
-    // Optimize browser for scraping (Block media)
     preNavigationHooks: [async ({ page }) => {
         await page.setViewportSize({ width: 1920, height: 1080 });
         await page.route('**/*.{png,jpg,jpeg,mp4,gif,woff,woff2}', (route) => route.abort());
@@ -164,8 +184,6 @@ const crawler = new PlaywrightCrawler({
             return;
         }
 
-        // 
-
         // --- STEP 1: Determine Navigation Strategy ---
         let targetUrl = config.baseUrl;
         const directUrl = constructDirectUrl(game, username, platform);
@@ -176,7 +194,7 @@ const crawler = new PlaywrightCrawler({
             usedDirectNav = true;
         }
 
-        log.info(`[${game}] Navigating to: ${targetUrl}`);
+        log.info(`[${game}] Navigating to: ${targetUrl} (Direct Mode: ${usedDirectNav})`);
         await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: CONFIG.navigationTimeout });
 
         // --- STEP 2: Handle Cookie Consent ---
@@ -189,6 +207,7 @@ const crawler = new PlaywrightCrawler({
 
         // --- STEP 3: Fallback to Search if Direct Nav failed or wasn't used ---
         const currentUrl = page.url();
+        // Check if we are still on the homepage (the base URL) after navigation
         const isOnHomePage = currentUrl.replace(/\/$/, '') === config.baseUrl.replace(/\/$/, '');
 
         if (!usedDirectNav || isOnHomePage) {
@@ -204,7 +223,6 @@ const crawler = new PlaywrightCrawler({
         log.info(`[${game}] Waiting for profile data load...`);
         try {
             await page.waitForLoadState('networkidle', { timeout: 15000 });
-            // Generic selector for "stats" area often found in these trackers
             await page.waitForSelector('.user-info, .profile-header, .stat, .main-content', { timeout: 10000 });
         } catch (e) {
             log.warning(`[${game}] Profile wait timeout. Analyzing what we have...`);
@@ -212,7 +230,7 @@ const crawler = new PlaywrightCrawler({
 
         const finalUrl = page.url();
 
-        // Check if we are still stuck on home or search
+        // Final check if we are stuck on the base URL or a generic search results page
         if (finalUrl.includes('search?') || finalUrl === config.baseUrl) {
             const errMessage = "Crawler stuck on Homepage or Search Results. Profile not found.";
             log.error(`[${game}] ${errMessage}`);
@@ -225,10 +243,8 @@ const crawler = new PlaywrightCrawler({
 
         let contentText;
         try {
-            // Prefer main content wrapper
             contentText = await page.locator('main, #app').innerText({ timeout: 2000 });
         } catch (e) {
-            // Fallback to full body
             contentText = await page.locator('body').innerText();
         }
 
@@ -250,7 +266,7 @@ for (const p of players) {
     for (const gameKey of p.games) {
         if (CONFIG.games[gameKey]) {
             requests.push({
-                url: CONFIG.games[gameKey].baseUrl, // Initial URL, rewritten in handler if direct
+                url: CONFIG.games[gameKey].baseUrl,
                 userData: {
                     game: gameKey,
                     username: p.username,
