@@ -1,8 +1,31 @@
 {
 	"name": "trackergg-scraper",
-	"version": "0.0.1",
+	"version": "1.0.0",
 	"type": "module",
-	"description": "This is an example of an Apify Actor.",
+	"description": "A powerful Apify Actor that scrapes player statistics from tracker.gg for popular games like Call of Duty: Warzone and Marvel Rivals. Uses AI-powered data extraction with OpenAI GPT-4o.",
+	"main": "src/main.js",
+	"homepage": "https://github.com/your-username/trackergg-scraper#readme",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/your-username/trackergg-scraper.git"
+	},
+	"bugs": {
+		"url": "https://github.com/your-username/trackergg-scraper/issues"
+	},
+	"keywords": [
+		"apify",
+		"scraper",
+		"gaming",
+		"tracker.gg",
+		"warzone",
+		"marvel-rivals",
+		"call-of-duty",
+		"player-stats",
+		"ai",
+		"openai",
+		"playwright",
+		"crawlee"
+	],
 	"dependencies": {
 		"apify": "^3.4.2",
 		"crawlee": "^3.13.8",
@@ -24,6 +47,12 @@
 		"test": "echo \"Error: oops, the Actor has no tests yet, sad!\" && exit 1",
 		"postinstall": "npx crawlee install-playwright-browsers"
 	},
-	"author": "It's not you it's me",
-	"license": "ISC"
+	"author": {
+		"name": "Tracker.gg Scraper Contributors",
+		"url": "https://github.com/your-username/trackergg-scraper/graphs/contributors"
+	},
+	"license": "ISC",
+	"engines": {
+		"node": ">=18.0.0"
+	}
 }

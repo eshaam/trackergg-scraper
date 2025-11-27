@@ -8,7 +8,7 @@ const TIMEOUT_MS = 60000;
 
 // Base URLs
 const BASE_URLS = {
-    "fortnite": "https://fortnitetracker.com",
+    "warzone": "https://tracker.gg/warzone",
     "marvel-rivals": "https://tracker.gg/marvel-rivals"
 };
 
@@ -42,18 +42,60 @@ async function extractStatsWithAI(game, rawText) {
     }
 }
 
+// ---------------- VALIDATION ----------------
+
+function validateInput(input) {
+    const errors = [];
+
+    if (!input.players || !Array.isArray(input.players)) {
+        errors.push('players must be an array');
+    } else if (input.players.length === 0) {
+        errors.push('players array cannot be empty');
+    } else {
+        input.players.forEach((player, index) => {
+            if (!player.username || typeof player.username !== 'string') {
+                errors.push(`players[${index}].username is required and must be a string`);
+            }
+            if (!player.games || !Array.isArray(player.games)) {
+                errors.push(`players[${index}].games is required and must be an array`);
+            }
+            if (player.games && player.games.includes('marvel-rivals') && !player.marvelId) {
+                errors.push(`players[${index}].marvelId is required for Marvel Rivals`);
+            }
+        });
+    }
+
+    return errors;
+}
+
 // ---------------- MAIN ACTOR ----------------
 
 await Actor.init();
-const input = await Actor.getInput() || {};
-const { players = [] } = input;
 
-const proxyConfiguration = await Actor.createProxyConfiguration({ groups: ['RESIDENTIAL'], countryCode: 'US' });
+// Environment variable validation
+if (!process.env.OPENAI_API_KEY) {
+    throw new Error('OPENAI_API_KEY environment variable is required for AI-powered data extraction');
+}
+
+const input = await Actor.getInput() || {};
+const validationErrors = validateInput(input);
+
+if (validationErrors.length > 0) {
+    throw new Error(`Input validation failed: ${validationErrors.join(', ')}`);
+}
+
+const { players = [], maxConcurrency = 1 } = input;
+
+const proxyConfiguration = await Actor.createProxyConfiguration({
+    groups: ['RESIDENTIAL'],
+    countryCode: 'US',
+    ...input.proxyConfiguration
+});
 
 const crawler = new PlaywrightCrawler({
     proxyConfiguration,
     useSessionPool: true,
-    maxConcurrency: 1,
+    maxConcurrency: Math.max(1, Math.min(maxConcurrency, 5)), // Ensure between 1-5
     requestHandlerTimeoutSecs: 180,
     headless: true,
 

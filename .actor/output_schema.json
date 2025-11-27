@@ -1,11 +1,12 @@
 {
     "actorOutputSchemaVersion": 1,
-    "title": "Output schema",
+    "title": "Trackergg Scraper Output",
     "properties": {
-        "overview": {
+        "dataset": {
             "type": "string",
-            "title": "Overview",
-            "template": "{{links.apiDefaultDatasetUrl}}/items?view=overview"
+            "title": "Player Statistics",
+            "description": "Scraped player statistics from tracker.gg",
+            "template": "{{links.apiDefaultDatasetUrl}}/items?view=player-stats"
         }
     }
 }

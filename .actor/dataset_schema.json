@@ -1,22 +1,89 @@
 {
     "actorSpecification": 1,
-    "fields": {},
+    "fields": {
+        "type": "object",
+        "properties": {
+            "status": {
+                "type": "string",
+                "description": "Scraping status: success or failed"
+            },
+            "game": {
+                "type": "string",
+                "description": "Game that was scraped"
+            },
+            "user": {
+                "type": "string",
+                "description": "Username that was searched for"
+            },
+            "url": {
+                "type": "string",
+                "description": "Final URL reached"
+            },
+            "stats": {
+                "type": "object",
+                "properties": {
+                    "username": {
+                        "type": "string",
+                        "description": "Extracted username from profile"
+                    },
+                    "rank": {
+                        "type": "string",
+                        "description": "Player rank or level"
+                    },
+                    "kills": {
+                        "type": "string",
+                        "description": "Kill statistics"
+                    },
+                    "matchesPlayed": {
+                        "type": "string",
+                        "description": "Number of matches played"
+                    },
+                    "winRate": {
+                        "type": "string",
+                        "description": "Win rate percentage"
+                    }
+                }
+            },
+            "error": {
+                "type": "string",
+                "description": "Error message if scraping failed"
+            }
+        }
+    },
     "views": {
-        "overview": {
-            "title": "Overview",
+        "player-stats": {
+            "title": "Player Statistics",
+            "description": "Scraped gaming statistics from tracker.gg",
             "transformation": {
-                "fields": ["title", "url"]
+                "fields": ["status", "game", "user", "url", "stats", "error"],
+                "desc": true
             },
             "display": {
                 "component": "table",
                 "properties": {
-                    "title": {
-                        "label": "Title",
+                    "status": {
+                        "label": "Status",
+                        "format": "text"
+                    },
+                    "game": {
+                        "label": "Game",
+                        "format": "text"
+                    },
+                    "user": {
+                        "label": "Username",
                         "format": "text"
                     },
                     "url": {
-                        "label": "URL",
+                        "label": "Profile URL",
                         "format": "link"
+                    },
+                    "stats": {
+                        "label": "Statistics",
+                        "format": "object"
+                    },
+                    "error": {
+                        "label": "Error",
+                        "format": "text"
                     }
                 }
             }

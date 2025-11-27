@@ -1,65 +1,300 @@
-## PlaywrightCrawler template
+# Tracker.gg Scraper
 
-<!-- This is an Apify template readme -->
+A powerful Apify Actor that scrapes player statistics from [tracker.gg](https://tracker.gg) for popular games like Call of Duty: Warzone and Marvel Rivals. Uses AI-powered data extraction to accurately parse gaming statistics.
 
-This template is a production-ready boilerplate for developing an [Actor](https://apify.com/actors) with `PlaywrightCrawler`. Use this to bootstrap your projects using the most up-to-date code.
+## ✨ Features
 
-> We decided to split Apify SDK into two libraries, Crawlee and Apify SDK v3. Crawlee will retain all the crawling and scraping-related tools and will always strive to be the best [web scraping](https://apify.com/web-scraping) library for its community. At the same time, Apify SDK will continue to exist, but keep only the Apify-specific features related to building Actors on the Apify platform. Read the upgrading guide to learn about the changes.
+- **Multi-game Support**: Supports Warzone and Marvel Rivals
+- **AI-Powered Extraction**: Uses OpenAI GPT-4o for intelligent data parsing
+- **Anti-Detection**: Residential proxy support with browser fingerprint protection
+- **Robust Navigation**: Dual-strategy approach (direct URL + search fallback)
+- **Input Validation**: Comprehensive validation of user inputs
+- **Error Handling**: Graceful error handling with detailed logging
 
-## Resources
+## 🎮 Supported Games
 
-If you're looking for examples or want to learn more visit:
+- **Call of Duty: Warzone** - K/D ratio, win rate, matches played, rank
+- **Marvel Rivals** - Player statistics and performance metrics
 
-- [Crawlee + Apify Platform guide](https://crawlee.dev/docs/guides/apify-platform)
-- [Documentation](https://crawlee.dev/api/playwright-crawler/class/PlaywrightCrawler) and [examples](https://crawlee.dev/docs/examples/playwright-crawler)
-- [Node.js tutorials](https://docs.apify.com/academy/node-js) in Academy
-- [Scraping single-page applications with Playwright](https://blog.apify.com/scraping-single-page-applications-with-playwright/)
-- [How to scale Puppeteer and Playwright](https://blog.apify.com/how-to-scale-puppeteer-and-playwright/)
-- [Integration with Zapier](https://apify.com/integrations), Make, GitHub, Google Drive and other apps
-- [Video guide on getting data using Apify API](https://www.youtube.com/watch?v=ViYYDHSBAKM)
-- A short guide on how to create Actors using code templates:
+## 🚀 Quick Start
 
-[web scraper template](https://www.youtube.com/watch?v=u-i-Korzf8w)
+### Prerequisites
 
+- Node.js 18+
+- OpenAI API key (for AI-powered data extraction)
+- Apify account (for deployment and hosting)
 
-## Getting started
-
-For complete information [see this article](https://docs.apify.com/platform/actors/development#build-actor-locally). To run the Actor use the following command:
+### Installation
 
 ```bash
+# Clone the repository
+git clone https://github.com/your-username/trackergg-scraper.git
+cd trackergg-scraper
+
+# Install dependencies
+npm install
+
+# Install Playwright browsers
+npm run postinstall
+```
+
+### Environment Setup
+
+Create a `.env` file or set environment variables:
+
+```bash
+export OPENAI_API_KEY=your_openai_api_key_here
+```
+
+### Local Development
+
+```bash
+# Run the Actor locally
 apify run
 ```
 
-## Deploy to Apify
+## 📊 Usage
 
-### Connect Git repository to Apify
+### Input Schema
 
-If you've created a Git repository for the project, you can easily connect to Apify:
+The scraper accepts the following input parameters:
 
-1. Go to [Actor creation page](https://console.apify.com/actors/new)
-2. Click on **Link Git Repository** button
+```json
+{
+  "players": [
+    {
+      "username": "your_gamertag",
+      "platform": "psn",  // psn, xbox, battlenet, steam, origin
+      "games": ["warzone"],  // warzone, marvel-rivals
+      "marvelId": "marvel_id_here"  // Required only for Marvel Rivals
+    }
+  ],
+  "maxConcurrency": 1,  // 1-5 concurrent requests
+  "proxyConfiguration": {
+    "useApifyProxy": true,
+    "apifyProxyGroups": ["RESIDENTIAL"],
+    "apifyProxyCountry": "US"
+  }
+}
+```
 
-### Push project on your local machine to Apify
+### Example Input
 
-You can also deploy the project on your local machine to Apify without the need for the Git repository.
+```json
+{
+  "players": [
+    {
+      "username": "ExamplePlayer123",
+      "platform": "battlenet",
+      "games": ["warzone"]
+    },
+    {
+      "username": "MarvelFan456",
+      "platform": "psn",
+      "games": ["marvel-rivals"],
+      "marvelId": "12345678"
+    }
+  ],
+  "maxConcurrency": 2
+}
+```
 
-1. Log in to Apify. You will need to provide your [Apify API Token](https://console.apify.com/account/integrations) to complete this action.
+### Output Schema
 
-    ```bash
-    apify login
-    ```
+The scraper produces structured data with the following fields:
 
-2. Deploy your Actor. This command will deploy and build the Actor on the Apify Platform. You can find your newly created Actor under [Actors -> My Actors](https://console.apify.com/actors?tab=my).
+```json
+{
+  "status": "success",
+  "game": "warzone",
+  "user": "ExamplePlayer123",
+  "url": "https://tracker.gg/warzone/profile/battlenet/ExamplePlayer123/overview",
+  "stats": {
+    "username": "ExamplePlayer123",
+    "rank": "Prestige Master",
+    "kills": "125,430",
+    "matchesPlayed": "892",
+    "winRate": "18.4%"
+  }
+}
+```
 
-    ```bash
-    apify push
-    ```
+### Error Output
 
-## Documentation reference
+```json
+{
+  "status": "failed",
+  "game": "warzone",
+  "user": "ExamplePlayer123",
+  "url": "https://tracker.gg/warzone",
+  "error": "Profile not found or private"
+}
+```
 
-To learn more about Apify and Actors, take a look at the following resources:
+## 🛠️ Configuration
 
-- [Apify SDK for JavaScript documentation](https://docs.apify.com/sdk/js)
-- [Apify SDK for Python documentation](https://docs.apify.com/sdk/python)
-- [Apify Platform documentation](https://docs.apify.com/platform)
-- [Join our developer community on Discord](https://discord.com/invite/jyEM2PRvMU)
+### Platform Mapping
+
+| Input Platform | tracker.gg URL |
+|----------------|----------------|
+| `psn`, `playstation`, `ps5` | `psn` |
+| `xbox`, `xbl` | `xbl` |
+| `battlenet`, `pc` | `battlenet` |
+| `steam` | `steam` |
+| `origin` | `origin` |
+
+### Proxy Configuration
+
+The scraper uses residential proxies by default for anti-bot protection. You can customize proxy settings:
+
+```json
+{
+  "proxyConfiguration": {
+    "useApifyProxy": true,
+    "apifyProxyGroups": ["RESIDENTIAL"],
+    "apifyProxyCountry": "US"
+  }
+}
+```
+
+## 🏗️ Architecture
+
+### Core Components
+
+1. **Input Validation**: Validates all input parameters before processing
+2. **Dual Navigation Strategy**:
+   - **Direct URL**: Constructs profile URLs when platform info available
+   - **Search Fallback**: Uses search functionality when direct navigation fails
+3. **Anti-Detection**: Implements browser fingerprinting and proxy rotation
+4. **AI Extraction**: Uses GPT-4o to parse unstructured gaming statistics
+5. **Error Handling**: Comprehensive error catching and reporting
+
+### Tech Stack
+
+- **Apify SDK v3** - Cloud platform integration
+- **Crawlee** - Web scraping framework
+- **Playwright** - Browser automation
+- **OpenAI GPT-4o** - AI-powered data extraction
+- **Node.js ES Modules** - Modern JavaScript
+
+## 📝 Development
+
+### Scripts
+
+```bash
+# Start the scraper
+npm start
+
+# Format code
+npm run format
+
+# Check code formatting
+npm run format:check
+
+# Lint code
+npm run lint
+
+# Fix linting issues
+npm run lint:fix
+
+# Run tests (currently placeholder)
+npm test
+```
+
+### Code Style
+
+- Uses ESLint with Apify configuration
+- Prettier for code formatting
+- ES Modules throughout
+- Modern JavaScript (async/await, destructuring)
+
+## 🚀 Deployment
+
+### Using Apify CLI
+
+```bash
+# Login to Apify
+apify login
+
+# Deploy to Apify
+apify push
+```
+
+### Manual Deployment
+
+1. Connect your Git repository to Apify Console
+2. Configure environment variables (`OPENAI_API_KEY`)
+3. Build and deploy the Actor
+
+## ⚠️ Limitations & Considerations
+
+### Rate Limiting
+
+- Concurrency limited to 1-5 requests to avoid overwhelming tracker.gg
+- Built-in delays between requests
+- Residential proxy usage recommended
+
+### AI Extraction
+
+- Requires OpenAI API key (costs apply)
+- Limits text input to 50,000 characters per AI request
+- May occasionally fail to parse complex layouts
+
+### Platform Support
+
+- Not all platforms may be available for all games
+- Some profiles may be private or restricted
+- tracker.gg may update their UI, requiring scraper updates
+
+## 🤝 Contributing
+
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
+
+### Development Guidelines
+
+- Follow existing code style and patterns
+- Add input validation for new features
+- Include error handling for all external requests
+- Update documentation for new functionality
+- Test with various gaming platforms
+
+## 📄 License
+
+This project is licensed under the ISC License - see the [LICENSE](LICENSE) file for details.
+
+## 🙏 Acknowledgments
+
+- [Apify](https://apify.com/) for the excellent scraping platform
+- [Crawlee](https://crawlee.dev/) for the powerful scraping framework
+- [OpenAI](https://openai.com/) for AI-powered data extraction
+- [Tracker.gg](https://tracker.gg/) for the gaming statistics platform
+
+## ⚖️ Disclaimer
+
+This scraper is for educational and legitimate data collection purposes only. Users are responsible for:
+
+- Complying with tracker.gg's Terms of Service
+- Respecting rate limits and fair use policies
+- Ensuring compliance with applicable laws and regulations
+- Any costs incurred from OpenAI API usage
+
+The authors are not responsible for misuse of this tool or any consequences arising from its use.
+
+## 🐛 Support & Issues
+
+If you encounter issues:
+
+1. Check the [Issues](https://github.com/your-username/trackergg-scraper/issues) page
+2. Create a new issue with detailed information:
+   - Input data used
+   - Error messages
+   - Expected vs actual output
+   - Environment details
+
+---
+
+**Built with ❤️ for the gaming community**
