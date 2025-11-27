@@ -4,6 +4,5 @@
 	"title": "Tracker.gg Scraper (Fortnite, Apex, Marvel, BF)",
 	"version": "0.1.0",
 	"dockerfile": "./Dockerfile",
-	"input": "./input_schema.json",
-	"storages": {}
+	"input": "./input_schema.json"
 }
