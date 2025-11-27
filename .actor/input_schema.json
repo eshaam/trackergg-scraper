@@ -2,11 +2,16 @@
     "actorOutputSchemaVersion": 1,
     "title": "Trackergg Scraper Output",
     "properties": {
-        "dataset": {
-            "type": "string",
-            "title": "Player Statistics",
-            "description": "Scraped player statistics from tracker.gg",
-            "template": "{{links.apiDefaultDatasetUrl}}/items?view=player-stats"
+        "startUrls": {
+            "title": "Start URLs",
+            "type": "array",
+            "description": "URLs to start with.",
+            "editor": "requestListSources",
+            "prefill": [
+                {
+                    "url": "https://apify.com"
+                }
+            ]
         }
     }
 }
