@@ -5,8 +5,7 @@
         "dataset": {
             "type": "string",
             "title": "Player Statistics",
-            "description": "Scraped player statistics from tracker.gg",
-            "template": "{{links.apiDefaultDatasetUrl}}/items?view=player-stats"
+            "description": "Scraped player statistics from tracker.gg"
         }
     }
 }
