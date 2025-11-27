@@ -1,70 +1,12 @@
 {
-    "title": "Trackergg Scraper Input",
-    "type": "object",
-    "schemaVersion": 1,
+    "actorOutputSchemaVersion": 1,
+    "title": "Trackergg Scraper Output",
     "properties": {
-        "players": {
-            "title": "Players to scrape",
-            "type": "array",
-            "description": "Array of players and their games to scrape statistics for",
-            "default": [],
-            "items": {
-                "type": "object",
-                "properties": {
-                    "username": {
-                        "title": "Username",
-                        "type": "string",
-                        "description": "Player's username or gamertag",
-                        "minLength": 1
-                    },
-                    "platform": {
-                        "title": "Platform",
-                        "type": "string",
-                        "description": "Gaming platform",
-                        "enum": ["psn", "xbox", "battlenet", "steam", "origin"],
-                        "enumTitles": ["PlayStation Network", "Xbox Live", "Battle.net", "Steam", "Origin"],
-                        "default": "battlenet"
-                    },
-                    "games": {
-                        "title": "Games",
-                        "type": "array",
-                        "description": "Games to scrape statistics for",
-                        "items": {
-                            "type": "string",
-                            "enum": ["warzone", "marvel-rivals"],
-                            "enumTitles": ["Call of Duty: Warzone", "Marvel Rivals"]
-                        },
-                        "default": ["warzone"]
-                    },
-                    "marvelId": {
-                        "title": "Marvel Rivals ID",
-                        "type": "string",
-                        "description": "Marvel Rivals specific ID (required only for Marvel Rivals)",
-                        "minLength": 1
-                    }
-                },
-                "required": ["username", "games"]
-            }
-        },
-        "maxConcurrency": {
-            "title": "Maximum Concurrency",
-            "type": "integer",
-            "description": "Maximum number of concurrent requests",
-            "default": 1,
-            "minimum": 1,
-            "maximum": 5
-        },
-        "proxyConfiguration": {
-            "title": "Proxy Configuration",
-            "type": "object",
-            "description": "Proxy settings for anti-bot protection",
-            "editor": "proxy",
-            "default": {
-                "useApifyProxy": true,
-                "apifyProxyGroups": ["RESIDENTIAL"],
-                "apifyProxyCountry": "US"
-            }
+        "dataset": {
+            "type": "string",
+            "title": "Player Statistics",
+            "description": "Scraped player statistics from tracker.gg",
+            "template": "{{links.apiDefaultDatasetUrl}}/items?view=player-stats"
         }
-    },
-    "required": ["players"]
+    }
 }
