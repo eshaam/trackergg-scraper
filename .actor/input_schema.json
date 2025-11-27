@@ -1,5 +1,5 @@
 {
-    "actorOutputSchemaVersion": 1,
+    "schemaVersion": 1,
     "title": "Trackergg Scraper Output",
     "type": "object",
     "properties": {
