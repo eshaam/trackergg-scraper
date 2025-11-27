@@ -1,4 +1,7 @@
 {
+    "title": "Trackergg Scraper",
+    "type": "object",
+    "schemaVersion": 1,
     "players": [
         {
             "username": "eshaam_za",
