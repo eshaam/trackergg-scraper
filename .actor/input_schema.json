@@ -5,6 +5,7 @@
     "properties": {
         "dataset": {
             "type": "string",
+            "editor": "requestListSources",
             "title": "Player Statistics",
             "description": "Scraped player statistics from tracker.gg"
         }
