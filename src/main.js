@@ -1,77 +1,37 @@
-import { PlaywrightCrawler, Dataset, log, ProxyConfiguration } from 'crawlee';
+import { PlaywrightCrawler, Dataset, log } from 'crawlee';
 import { Actor } from 'apify';
 import OpenAI from 'openai';
 
 // ---------------- CONFIGURATION ----------------
-const CONFIG = {
-    openaiModel: "gpt-4o",
-    navigationTimeout: 90000, // 90 seconds
-    typingDelay: 150, // ms between keystrokes for autocomplete
-    games: {
-        // You can easily add more games here by following the pattern
-        "fortnite": {
-            baseUrl: "https://fortnitetracker.com",
-            platformMap: { 'psn': 'psn', 'xbox': 'xbl', 'pc': 'pc' }
-        },
-        "marvel-rivals": {
-            baseUrl: "https://tracker.gg/marvel-rivals",
-            platformMap: { 'steam': 'steam', 'psn': 'psn', 'xbox': 'xbl' }
-        }
-    }
+const OPENAI_MODEL = "gpt-4o";
+const TIMEOUT_MS = 60000;
+
+// Base URLs
+const BASE_URLS = {
+    "fortnite": "https://fortnitetracker.com",
+    "marvel-rivals": "https://tracker.gg/marvel-rivals"
 };
 
-// ---------------- HELPERS ----------------
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-/**
- * Constructs a direct profile URL based on known patterns to avoid search flakiness.
- * @param {string} game - The game key (e.g., 'warzone')
- * @param {string} username - Player username
- * @param {string} platform - Player platform
- * @returns {string|null} - The constructed URL or null if pattern unknown.
- */
-function constructDirectUrl(game, username, platform) {
-    const gameConfig = CONFIG.games[game];
-    if (!gameConfig || !username || !platform) return null;
+// ---------------- AI HELPERS ----------------
 
-    // Use default platform slug or look it up in the config map
-    const pSlug = gameConfig.platformMap[platform.toLowerCase()] || platform;
-    const encodedUser = encodeURIComponent(username);
-
-    // Pattern matching for different sub-domains
-    if (game === 'warzone' || game === 'apex' || game === 'fortnite' || game === 'marvel-rivals') {
-        return `${gameConfig.baseUrl}/profile/${pSlug}/${encodedUser}/overview`;
-    }
-
-    return null;
-}
-
-/**
- * Interacts with the AI model to parse raw HTML/Text into JSON.
- */
-async function extractStatsWithAI(openaiClient, game, rawText) {
-    if (!openaiClient) {
-        log.error("OpenAI Client not initialized. Skipping extraction.");
-        return null;
-    }
-
+async function extractStatsWithAI(game, rawText) {
     const systemPrompt = `
-    You are a strict data extraction engine. 
-    Task: Extract player stats for "${game}" from the provided website text.
-    
-    Output Format: JSON
-    Schema: { "username": string, "rank": string, "kills": string, "matchesPlayed": string, "winRate": string }
+    You are a data extractor. Extract player stats for "${game}" from the text dump of a stats profile page.
     
     Rules:
-    1. If a stat is explicitly missing, use null.
-    2. Do not calculate or hallucinate data.
+    1. Look for keywords like "K/D", "Win %", "Kills", "Matches".
+    2. Return a STRICT JSON object: { "username": string, "rank": string, "kills": string, "matchesPlayed": string, "winRate": string }.
+    3. If a specific stat is not found, set it to null.
     `;
 
     try {
-        const completion = await openaiClient.chat.completions.create({
-            model: CONFIG.openaiModel,
+        const completion = await openai.chat.completions.create({
+            model: OPENAI_MODEL,
             messages: [
                 { role: "system", content: systemPrompt },
-                { role: "user", content: rawText.slice(0, 45000) } // Trim to avoid token limits
+                { role: "user", content: rawText.slice(0, 50000) }
             ],
             response_format: { type: "json_object" }
         });
@@ -82,85 +42,13 @@ async function extractStatsWithAI(openaiClient, game, rawText) {
     }
 }
 
-/**
- * Handles the UI interaction when direct navigation fails.
- */
-async function performSearch(page, targetUser) {
-    log.info(`Performing manual search interaction for: ${targetUser}`);
-
-    // 1. Locate Search Input
-    const searchSelectors = ['input[type="search"]', '.search-container input', 'input[placeholder*="Search"]'];
-    let searchInput;
-
-    for (const sel of searchSelectors) {
-        if (await page.locator(sel).first().isVisible()) {
-            searchInput = page.locator(sel).first();
-            break;
-        }
-    }
-
-    if (!searchInput) throw new Error("Search input not found in DOM.");
-
-    // 2. Interaction: Focus -> Clear -> Type Slowly
-    await searchInput.click();
-    await searchInput.fill('');
-    await searchInput.pressSequentially(targetUser, { delay: CONFIG.typingDelay });
-    await page.waitForTimeout(2000); // Wait for AJAX dropdown
-
-    // 3. Selection Strategy
-    const autocompleteOption = page.locator('div[class*="option"], .search-result, .force-search');
-
-    // Most reliable method for Tracker.gg: click the first autocomplete result
-    if (await autocompleteOption.count() > 0) {
-        log.info(`Clicking autocomplete suggestion...`);
-        await autocompleteOption.first().click();
-    } else {
-        // Fallback: Press Enter and then click search icon if URL hasn't changed
-        log.info(`No autocomplete found. Pressing Enter...`);
-        await searchInput.press('Enter');
-
-        await page.waitForTimeout(1000);
-        const searchIcon = page.locator('.fa-search, button[type="submit"], svg.search-icon');
-        if (await searchIcon.count() > 0 && page.url().includes('search?')) {
-            log.info(`Clicking search icon directly after failed Enter...`);
-            await searchIcon.first().click();
-        }
-    }
-}
-
 // ---------------- MAIN ACTOR ----------------
 
 await Actor.init();
-
-// Input Handling
 const input = await Actor.getInput() || {};
 const { players = [] } = input;
 
-// Validate Environment
-if (!process.env.OPENAI_API_KEY) {
-    await Actor.fail('Missing OPENAI_API_KEY in environment variables.');
-}
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-
-
-// 🛑 PROXY FIX: You cannot combine RESIDENTIAL with other proxy groups. 
-// We try for RESIDENTIAL first, and fall back to AUTO if necessary/configured externally.
-let proxyConfiguration;
-try {
-    // Attempt to use the dedicated Residential proxy group (recommended for stability)
-    proxyConfiguration = await Actor.createProxyConfiguration({
-        groups: ['RESIDENTIAL'],
-        countryCode: 'US'
-    });
-} catch (e) {
-    // Fallback to the general AUTO proxy group
-    log.warning(`Residential proxy unavailable or misconfigured: ${e.message}. Falling back to AUTO.`);
-    proxyConfiguration = await Actor.createProxyConfiguration({
-        groups: ['AUTO'],
-        countryCode: 'US'
-    });
-}
-
+const proxyConfiguration = await Actor.createProxyConfiguration({ groups: ['RESIDENTIAL'], countryCode: 'US' });
 
 const crawler = new PlaywrightCrawler({
     proxyConfiguration,
@@ -177,78 +65,121 @@ const crawler = new PlaywrightCrawler({
     requestHandler: async ({ page, request }) => {
         const { game, username, platform, marvelId } = request.userData;
         const targetUser = (game === 'marvel-rivals' && marvelId) ? marvelId : username;
-        const config = CONFIG.games[game];
 
-        if (!config) {
-            log.error(`Game configuration not found for: ${game}`);
-            return;
+        // ---------------- STRATEGY 1: Direct URL Construction (Most Reliable) ----------------
+        // If we know the platform, we skip the search bar entirely.
+        let targetUrl = request.url;
+        let isDirectNavigation = false;
+
+        if (platform && username) {
+            // Map common input platforms to URL slugs
+            const platformMap = {
+                'psn': 'psn', 'playstation': 'psn', 'ps5': 'psn',
+                'xbox': 'xbl', 'xbl': 'xbl',
+                'battlenet': 'battlenet', 'pc': 'battlenet',
+                'origin': 'origin',
+                'steam': 'steam'
+            };
+            const pSlug = platformMap[platform.toLowerCase()] || platform;
+
+            if (game === 'warzone') {
+                targetUrl = `${BASE_URLS[game]}/profile/${pSlug}/${encodeURIComponent(username)}/overview`;
+                isDirectNavigation = true;
+            } else if (game === 'apex') {
+                targetUrl = `${BASE_URLS[game]}/profile/${pSlug}/${encodeURIComponent(username)}/overview`;
+                isDirectNavigation = true;
+            }
         }
 
-        // --- STEP 1: Determine Navigation Strategy ---
-        let targetUrl = config.baseUrl;
-        const directUrl = constructDirectUrl(game, username, platform);
-        let usedDirectNav = false;
+        log.info(`[${game}] Navigating: ${targetUrl} (Direct Mode: ${isDirectNavigation})`);
+        await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: TIMEOUT_MS });
 
-        if (directUrl) {
-            targetUrl = directUrl;
-            usedDirectNav = true;
-        }
-
-        log.info(`[${game}] Navigating to: ${targetUrl} (Direct Mode: ${usedDirectNav})`);
-        await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: CONFIG.navigationTimeout });
-
-        // --- STEP 2: Handle Cookie Consent ---
+        // 1. Consent Handling
         try {
             const consentBtn = page.locator('button:has-text("Accept"), button:has-text("Agree"), button[mode="primary"]');
             if (await consentBtn.count() > 0) {
-                await consentBtn.first().click({ timeout: 5000 });
+                await consentBtn.first().click({ timeout: 5000 }).catch(() => { });
+                await page.waitForTimeout(1000);
             }
-        } catch (e) { /* Ignore consent errors */ }
+        } catch (e) { }
 
-        // --- STEP 3: Fallback to Search if Direct Nav failed or wasn't used ---
-        const currentUrl = page.url();
-        // Check if we are still on the homepage (the base URL) after navigation
-        const isOnHomePage = currentUrl.replace(/\/$/, '') === config.baseUrl.replace(/\/$/, '');
+        // ---------------- STRATEGY 2: Search Interaction (If Direct Nav failed or not used) ----------------
+        // If we are still on the homepage (or didn't use direct nav), we must search.
+        const currentUrlInitial = page.url();
+        const isHomePage = currentUrlInitial.length < (BASE_URLS[game].length + 5); // Rough check if we are on root
 
-        if (!usedDirectNav || isOnHomePage) {
-            try {
-                await performSearch(page, targetUser);
-            } catch (err) {
-                log.warning(`[${game}] Search interaction failed: ${err.message}`);
-                // Continue to try and see if we are on a valid page anyway
+        if (!isDirectNavigation || isHomePage) {
+            log.info(`[${game}] Performing Search interaction for: ${targetUser}`);
+
+            // A. Find Input
+            const selectors = ['input[type="search"]', '.search-container input', 'input[placeholder*="Search"]'];
+            let searchInput;
+            for (const sel of selectors) {
+                if (await page.locator(sel).first().isVisible()) {
+                    searchInput = page.locator(sel).first();
+                    break;
+                }
+            }
+            if (!searchInput) throw new Error("Search input not found");
+
+            // B. Type Slow to trigger Autocomplete
+            await searchInput.click();
+            await searchInput.fill('');
+            await searchInput.pressSequentially(targetUser, { delay: 150 }); // Typing slowly is KEY
+            await page.waitForTimeout(2000); // Wait for dropdown
+
+            // C. Try to click "Search" icon or "Autocomplete Result"
+            // Tracker.gg often requires clicking the result, not just Enter
+            const dropdownOption = page.locator('div[class*="option"], .search-result, .force-search');
+
+            if (await dropdownOption.count() > 0) {
+                log.info(`[${game}] Clicking autocomplete suggestion...`);
+                await dropdownOption.first().click();
+            } else {
+                log.info(`[${game}] No autocomplete. Pressing Enter...`);
+                await searchInput.press('Enter');
+
+                // Fallback: Click search icon if Enter didn't work
+                await page.waitForTimeout(1000);
+                if (page.url() === currentUrlInitial) {
+                    const searchIcon = page.locator('.fa-search, button[type="submit"], svg.search-icon');
+                    if (await searchIcon.count() > 0) {
+                        log.info(`[${game}] Clicking search icon directly...`);
+                        await searchIcon.first().click();
+                    }
+                }
             }
         }
 
-        // --- STEP 4: Validation & waiting ---
-        log.info(`[${game}] Waiting for profile data load...`);
+        // 3. Wait for Results
+        log.info(`[${game}] Waiting for profile load...`);
         try {
             await page.waitForLoadState('networkidle', { timeout: 15000 });
-            await page.waitForSelector('.user-info, .profile-header, .stat, .main-content', { timeout: 10000 });
+            // Wait specifically for a profile element
+            await page.waitForSelector('.user-info, .profile-header, .stat', { timeout: 10000 });
         } catch (e) {
-            log.warning(`[${game}] Profile wait timeout. Analyzing what we have...`);
+            log.warning(`[${game}] Wait timeout (might be 404 or slow). Checking URL...`);
         }
 
         const finalUrl = page.url();
+        log.info(`[${game}] Final URL: ${finalUrl}`);
 
-        // Final check if we are stuck on the base URL or a generic search results page
-        if (finalUrl.includes('search?') || finalUrl === config.baseUrl) {
-            const errMessage = "Crawler stuck on Homepage or Search Results. Profile not found.";
-            log.error(`[${game}] ${errMessage}`);
-            await Dataset.pushData({ status: "failed", game, user: targetUser, error: errMessage });
+        if (finalUrl === BASE_URLS[game] || finalUrl.includes('search?')) {
+            log.error(`[${game}] Failed to reach profile page.`);
+            await Dataset.pushData({ status: "failed", game, user: targetUser, url: finalUrl, error: "Stuck on Search/Home" });
             return;
         }
 
-        // --- STEP 5: AI Extraction ---
-        log.info(`[${game}] Extracting stats from ${finalUrl}...`);
-
+        // 4. Extraction
+        log.info(`[${game}] Extracting stats...`);
         let contentText;
         try {
-            contentText = await page.locator('main, #app').innerText({ timeout: 2000 });
+            contentText = await page.locator('main').innerText({ timeout: 2000 });
         } catch (e) {
             contentText = await page.locator('body').innerText();
         }
 
-        const stats = await extractStatsWithAI(openai, game, contentText);
+        const stats = await extractStatsWithAI(game, contentText);
 
         await Dataset.pushData({
             status: "success",
@@ -260,26 +191,22 @@ const crawler = new PlaywrightCrawler({
     },
 });
 
-// Request Generation
 const requests = [];
 for (const p of players) {
     for (const gameKey of p.games) {
-        if (CONFIG.games[gameKey]) {
+        if (BASE_URLS[gameKey]) {
             requests.push({
-                url: CONFIG.games[gameKey].baseUrl,
+                url: BASE_URLS[gameKey],
                 userData: {
                     game: gameKey,
                     username: p.username,
-                    platform: p.platform,
+                    platform: p.platform, // Ensure this is passed in your input JSON
                     marvelId: p.marvelId
                 }
             });
-        } else {
-            log.warning(`Skipping unknown game: ${gameKey}`);
         }
     }
 }
 
-log.info(`Starting crawler with ${requests.length} requests...`);
 await crawler.run(requests);
 await Actor.exit();
